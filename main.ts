@@ -3,11 +3,41 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import path from "path";
 import fs from "node:fs";
-import crypto from "node:crypto";
+import crypto from "crypto";
 
 const MAX_FILES_TO_PROCESS = 1000;
 const MAX_EXECUTION_TIME_MS = 5000;
 const MAX_DEPTH = 10;
+const MAX_ITEMS_PER_DIR = 100;
+const COMMON_FILE_EXTENSIONS = [
+  "txt",
+  "js",
+  "html",
+  "css",
+  "json",
+  "xml",
+  "md",
+  "pdf",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "bmp",
+  "svg",
+  "mp3",
+  "wav",
+  "ogg",
+  "flac",
+  "mp4",
+  "avi",
+  "mkv",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+];
 
 const server = new McpServer({
   name: "files-cleanup",
@@ -33,13 +63,11 @@ server.tool(
       // Set limits
       const startTime = Date.now();
       let filesProcessed = 0;
-      const actualMaxDepth = maxDepth && maxDepth < 10 ? maxDepth : MAX_DEPTH;
-      const actualMaxFiles = maxFiles && maxFiles < 5000 ? maxFiles : MAX_FILES_TO_PROCESS;
+      const actualMaxDepth = Math.min(maxDepth, MAX_DEPTH);
+      const actualMaxFiles = Math.min(maxFiles, MAX_FILES_TO_PROCESS);
 
-      const uselessFiles = await findUselessFiles(directory, 0, actualMaxDepth, startTime, actualMaxFiles, filesProcessed);
-
-      const duplicates = findDuplicateFiles();
-
+      const uselessFiles = await findUselessFiles(directory, 0, actualMaxDepth, startTime, actualMaxFiles, filesProcessed); // Pass includeExtensions
+      const duplicates = findDuplicateFiles(COMMON_FILE_EXTENSIONS);
       if (uselessFiles.length === 0 && duplicates.length === 0) {
         return { content: [{ type: "text", text: `No useless files found in: ${directory}` }] };
       }
@@ -58,7 +86,7 @@ server.tool(
   }
 );
 
-function findDuplicateFiles(): string[] {
+function findDuplicateFiles(includeExtensions: string[] = COMMON_FILE_EXTENSIONS): string[] {
   const duplicates: string[] = [];
 
   fileHashes.forEach((filePaths) => {
@@ -67,7 +95,13 @@ function findDuplicateFiles(): string[] {
       const dupes = filePaths.slice(1);
 
       dupes.forEach((dupe) => {
-        duplicates.push(`${dupe} (duplicate of ${original})`);
+        const originalExtension = path.extname(original).slice(1).toLowerCase();
+        const dupeExtension = path.extname(dupe).slice(1).toLowerCase();
+
+        // Check if extensions should be included
+        if (includeExtensions.length === 0 || (includeExtensions.includes(originalExtension) && includeExtensions.includes(dupeExtension))) {
+          duplicates.push(`${dupe} (duplicate of ${original})`);
+        }
       });
     }
   });
@@ -77,17 +111,26 @@ function findDuplicateFiles(): string[] {
 
 async function calculateFileHash(itemPath: string): Promise<string> {
   const stats = fs.lstatSync(itemPath);
-  if (stats.isFile()) {
+  if (!stats.isFile()) {
+    return ""; // Return empty string for non-files.
+  }
+
+  return new Promise((resolve, reject) => {
     const hash = crypto.createHash("md5");
     const fileStream = fs.createReadStream(itemPath);
+
     fileStream.on("data", (chunk) => {
       hash.update(chunk);
     });
+
     fileStream.on("end", () => {
-      return hash.digest("hex");
+      resolve(hash.digest("hex"));
     });
-  }
-  return itemPath;
+
+    fileStream.on("error", (err) => {
+      reject(err);
+    });
+  });
 }
 
 async function findUselessFiles(
@@ -142,7 +185,6 @@ async function findUselessFiles(
   }
 
   // Process only a limited number of items per directory
-  const MAX_ITEMS_PER_DIR = 100;
   const itemsToProcess = items.slice(0, MAX_ITEMS_PER_DIR);
 
   if (items.length > MAX_ITEMS_PER_DIR) {
@@ -158,7 +200,7 @@ async function findUselessFiles(
 
       if (stats.isDirectory()) {
         // Recursively check subdirectories with updated limits
-        const subDirResults = await findUselessFiles(itemPath, currentDepth + 1, maxDepth, startTime, maxFiles, filesProcessed);
+        const subDirResults = await findUselessFiles(itemPath, currentDepth + 1, maxDepth, startTime, maxFiles, filesProcessed); // Pass includeExtensions
         uselessFiles.push(...subDirResults);
       } else {
         // Logic to detect useless files (currently only empty ones)
@@ -167,12 +209,17 @@ async function findUselessFiles(
         }
 
         // Add file to hash map for duplicate detection
-        const fileHash = await calculateFileHash(itemPath);
+        const fileExtension = path.extname(itemPath).slice(1).toLowerCase();
+        if (COMMON_FILE_EXTENSIONS.includes(fileExtension)) {
+          const fileHash = await calculateFileHash(itemPath);
 
-        if (!fileHashes.has(String(fileHash))) {
-          fileHashes.set(String(fileHash), [itemPath]);
-        } else {
-          fileHashes.get(String(fileHash))?.push(itemPath);
+          if (fileHash) {
+            if (!fileHashes.has(fileHash)) {
+              fileHashes.set(fileHash, [itemPath]);
+            } else {
+              fileHashes.get(fileHash)?.push(itemPath);
+            }
+          }
         }
       }
 

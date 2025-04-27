@@ -5,6 +5,7 @@
 `files-cleanup` is a Model Context Protocol (MCP) server tool designed to identify potentially useless files and duplicate files within a specified directory. It recursively scans the directory up to a defined depth, checking for empty files and files with identical content (based on MD5 hash).
 
 This tool can be valuable for decluttering your file system and recovering disk space.
+It is a readonly tool no files are changed in the system.
 
 ## Features
 
@@ -42,22 +43,39 @@ The tool returns a result with a `content` array containing text blocks. This ou
 
 ## Getting Started
 
-1.  **Save the code:** Save the provided code as a `.mjs` file (e.g., `files-cleanup-server.mjs`).
-2.  **Install dependencies:** Make sure you have the necessary packages installed:
+### Dev Mode
+
+1.  **Install dependencies:** Make sure you have the necessary packages installed:
 
     ```bash
-    npm install @modelcontextprotocol/sdk zod
+    pnpm install
     ```
 
-3.  **Run the server:** Execute the server script using Node.js:
+2.  **Run the server with inspector:** Execute the server script using Node.js:
 
     ```bash
-    node files-cleanup-server.mjs
+    npm run inspector
+    ```
+
+    The server will start and listen for MCP client connections and you will be able to access to the UI in : http://localhost:6274/
+
+### Connect to Claude
+
+1.  **Install dependencies:** Make sure you have the necessary packages installed:
+
+    ```bash
+    pnpm install
+    ```
+
+2.  **Run the server:** Execute the server script using Node.js:
+
+    ```bash
+    npm run start
     ```
 
     The server will start and listen for MCP client connections on its standard input and output streams.
 
-4.  **Connect with an MCP client:** Use an MCP client to send a request to the `find-useless-files` tool, providing the `directory` parameter and optionally `maxDepth` and `maxFiles`.
+3.  **Connect with an MCP client:** Use an MCP client to send a request to the `find-useless-files` tool, providing the `directory` parameter and optionally `maxDepth` and `maxFiles`.
 
 ## Example Interaction (Conceptual)
 
@@ -89,7 +107,7 @@ The server would then process the request and return a response similar to this:
 
 ## Important Considerations
 
-- **"Uselessness" Definition:** Currently, the tool only considers empty files and empty directories as "useless." You might want to extend the logic in the `findUselessFiles` function to identify other types of potentially unwanted files based on your specific needs (e.g., temporary files, log files, etc.).
+- **"Uselessness" Definition:** Currently, the tool only considers empty files and empty directories as "useless." The develompent process has just started.
 - **File Deletion:** This tool **only identifies** potentially useless and duplicate files. **It does not delete any files.** You will need to manually review the reported files and decide which ones to remove. **Be cautious when deleting files.**
 - **Performance:** Scanning large directories with a high `maxDepth` and `maxFiles` can take a significant amount of time. Adjust these parameters based on the size of the directory you are scanning.
 - **Error Handling:** While the tool includes basic error handling, you might want to add more robust error reporting and logging for production use.
@@ -102,7 +120,3 @@ The server would then process the request and return a response similar to this:
 - **Interactive mode (with a client):** Develop an MCP client that allows users to browse the found files and selectively delete them (with a confirmation step!).
 - **Progress reporting:** Provide feedback to the client about the progress of the scan, especially for long-running operations.
 - **Configuration file:** Allow users to configure default values for `maxDepth`, `maxFiles`, and other options through a configuration file.
-
-```
-
-```

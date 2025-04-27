@@ -76,7 +76,18 @@ function findDuplicateFiles(): string[] {
 }
 
 async function calculateFileHash(itemPath: string): Promise<string> {
-  return "";
+  const stats = fs.lstatSync(itemPath);
+  if (stats.isFile()) {
+    const hash = crypto.createHash("md5");
+    const fileStream = fs.createReadStream(itemPath);
+    fileStream.on("data", (chunk) => {
+      hash.update(chunk);
+    });
+    fileStream.on("end", () => {
+      return hash.digest("hex");
+    });
+  }
+  return itemPath;
 }
 
 async function findUselessFiles(
@@ -88,6 +99,10 @@ async function findUselessFiles(
   filesProcessed = 0
 ): Promise<string[]> {
   const uselessFiles: string[] = [];
+
+  if (dirPath.includes("node_modules") || dirPath.includes(".git")) {
+    return uselessFiles;
+  }
 
   // Check time limit
   if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
@@ -146,19 +161,18 @@ async function findUselessFiles(
         const subDirResults = await findUselessFiles(itemPath, currentDepth + 1, maxDepth, startTime, maxFiles, filesProcessed);
         uselessFiles.push(...subDirResults);
       } else {
-        // Logic to detect useless files
+        // Logic to detect useless files (currently only empty ones)
         if (stats.size === 0) {
           uselessFiles.push(`${itemPath} (empty file)`);
         }
 
         // Add file to hash map for duplicate detection
-        const fileSize = stats.size;
         const fileHash = await calculateFileHash(itemPath);
 
-        if (!fileHashes.has(String(fileSize))) {
-          fileHashes.set(String(fileSize), [itemPath]);
+        if (!fileHashes.has(String(fileHash))) {
+          fileHashes.set(String(fileHash), [itemPath]);
         } else {
-          fileHashes.get(String(fileSize))?.push(itemPath);
+          fileHashes.get(String(fileHash))?.push(itemPath);
         }
       }
 
